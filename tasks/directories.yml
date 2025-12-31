@@ -1,0 +1,16 @@
+# -------------------------------------------------------------------
+# Purpose:
+#   Ensure all directories required by the docker_stack exist with correct
+#   ownership and permissions.
+# -------------------------------------------------------------------
+
+- name: Create docker_stack directories
+  ansible.builtin.file:
+    path: "{{ item.value.path }}"
+    state: directory
+    owner: "{{ item.value.owner | default(docker_stack.directories_defaults.owner | default('root')) }}"
+    group: "{{ item.value.group | default(docker_stack.directories_defaults.group | default('docker')) }}"
+    mode: "{{ item.value.mode | default(docker_stack.directories_defaults.mode | default('0755')) }}"
+  loop: "{{ docker_stack.directories | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

@@ -1,0 +1,46 @@
+# -------------------------------------------------------------------
+# Purpose:
+#   Ensure all external Docker networks required by the docker_stack exist.
+#   - Checks for existing networks
+#   - Creates missing networks with proper driver, scope, and flags
+# -------------------------------------------------------------------
+
+- name: Gather external network information
+  community.docker.docker_network_info:
+    name: "{{ item.key }}"
+  register: docker_network_info
+  loop: >-
+    {{
+      docker_stack.networks | default({})
+      | dict2items
+      | selectattr('value.external', 'defined')
+      | selectattr('value.external')
+      | list
+    }}
+  failed_when: false
+  changed_when: false
+  run_once: true
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Create missing external networks
+  community.docker.docker_network:
+    name: "{{ item.item.key }}"
+    driver: >-
+      {{
+        item.item.value.driver
+          | default(
+              (docker_stack.mode == 'swarm')
+              | ternary('overlay', 'bridge')
+            )
+      }}
+    scope: "{{ (docker_stack.mode == 'swarm') | ternary('swarm', omit) }}"
+    attachable: "{{ item.item.value.attachable | default(true) }}"
+    internal: "{{ item.item.value.internal | default(false) }}"
+    state: present
+  loop: "{{ docker_network_info.results }}"
+  when:
+    - not item.exists
+  run_once: true
+  loop_control:
+    label: "{{ item.item.key }}"

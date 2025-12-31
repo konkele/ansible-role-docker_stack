@@ -1,0 +1,49 @@
+# -------------------------------------------------------------------
+# Generic layered dictionary merge helper for Ansible
+#
+# Purpose:
+#   Merge multiple optional layers into a single canonical variable
+#   for predictable, reusable configuration handling.
+#
+# Merge Order (lowest → highest precedence):
+#   1. <var>_defaults   (role defaults / safe baseline)
+#   2. <var>_group      (group_vars overrides)
+#   3. <var>_host       (host_vars overrides)
+#   4. <var>_override   (explicit playbook or ad-hoc overrides)
+#
+# -------------------------------------------------------------------
+
+- name: Verify merge_var_specs is defined
+  assert:
+    that:
+      - merge_var_specs is defined
+      - merge_var_specs | length > 0
+    fail_msg: "You must define 'merge_var_specs' as a non-empty list"
+
+- name: Merge dictionary layers for each variable
+  ansible.builtin.set_fact:
+    "{{ item.name }}_merged": >-
+      {{
+        lookup('vars', item.name + '_defaults') | default({})
+        | combine(
+            lookup('vars', item.name + '_group') | default({}),
+            recursive=True,
+            list_merge='append_rp'
+          )
+        | combine(
+            lookup('vars', item.name + '_host') | default({}),
+            recursive=True,
+            list_merge='append_rp'
+          )
+        | combine(
+            lookup('vars', item.name + '_override') | default({}),
+            recursive=True,
+            list_merge=item.override_list_merge | default('append_rp')
+          )
+      }}
+  loop: "{{ merge_var_specs }}"
+
+- name: Promote merged dictionaries to canonical variables
+  ansible.builtin.set_fact:
+    "{{ item.name }}": "{{ lookup('vars', item.name + '_merged') }}"
+  loop: "{{ merge_var_specs }}"

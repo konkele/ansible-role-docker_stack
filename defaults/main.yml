@@ -1,0 +1,26 @@
+docker_stack_defaults:
+  name: whoami    # Stack Name
+  mode: compose   # compose | swarm
+  state: present  # present | absent
+
+  allow_prune: false  # Prune stack directory when removing
+
+  directories:
+    base:                 # Base directory for all stacks
+      path: /opt/stacks   # Base directory path
+    stack: {}             # Stack-specific directory overrides
+    config: {}            # Config directory overrides
+    data: {}              # Data directory overrides
+    secrets:
+      owner: root   # Owner for secrets directory
+      group: root   # Group for secrets directory
+      mode: "0700"  # Permissions for secrets directory
+
+  directories_defaults:
+    owner: root   # Default directory owner
+    group: docker # Default directory group
+    mode: "0755"  # Default directory permissions
+
+  label_secret_hash: docker.secrets.hash  # Label to force redploy when secrets are updated
+
+  services: {}   # Service definitions
