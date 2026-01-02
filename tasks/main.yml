@@ -37,6 +37,8 @@
         | combine(item, recursive=True)
       }}
   loop: "{{ docker_stacks_list }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed_stack') }}"
 
 # -------------------------------------------------
 # Step 4: Process each docker stack individually
@@ -46,3 +48,4 @@
   loop: "{{ docker_stacks_prepared }}"
   loop_control:
     loop_var: stack_input
+    label: "{{ stack_input.name | default('unnamed_stack') }}"

@@ -12,11 +12,9 @@
 # -------------------------------------------------------------------
 
 - name: Verify merge_var_specs is defined
-  assert:
-    that:
-      - merge_var_specs is defined
-      - merge_var_specs | length > 0
-    fail_msg: "You must define 'merge_var_specs' as a non-empty list"
+  fail:
+    msg: "You must define 'merge_var_specs' as a non-empty list"
+  when: merge_var_specs is not defined or merge_var_specs | length == 0
 
 - name: Merge dictionary layers for each variable
   ansible.builtin.set_fact:
