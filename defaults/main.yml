@@ -1,5 +1,4 @@
 docker_stack_defaults:
-  name: whoami    # Stack Name
   mode: compose   # compose | swarm
   state: present  # present | absent
 

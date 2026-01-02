@@ -1,0 +1,106 @@
+# -------------------------------------------------------------------
+# Stack Runner
+#
+# Purpose:
+#   Orchestrate the lifecycle of a single docker_stack based on its
+#   desired state ('present' or 'absent').
+#
+# Responsibilities:
+#   1. Initialize stack variable for this iteration
+#   2. Merge layered variables
+#   3. Validate input structure
+#   4. Prepare normalized paths, services, and directories
+#   5. Remove stack if state=absent
+#   6. Deploy stack if state=present
+# -------------------------------------------------------------------
+
+# -------------------------------------------------
+# Step 1: Initialize docker_stack variable
+# -------------------------------------------------
+- name: Initialize docker_stack for this iteration
+  ansible.builtin.set_fact:
+    docker_stack: "{{ stack_input }}"
+
+# -------------------------------------------------
+# Step 2: Merge docker stack variables
+# -------------------------------------------------
+- name: Merge docker stack variables
+  import_tasks: merge.yml
+  vars:
+    merge_var_specs:
+      - name: docker_stack
+
+# -------------------------------------------------
+# Step 3: Validate docker_stack input
+# -------------------------------------------------
+- name: Validate docker_stack input
+  import_tasks: validate.yml
+
+# -------------------------------------------------
+# Step 4: Prepare variables and normalize structure
+# -------------------------------------------------
+# Computes stack paths, directories, normalized services, ports, volumes, deploy, secrets, etc.
+- name: Prepare Variables
+  import_tasks: prepare.yml
+
+# ----------------------
+# ABSENT STATE HANDLING
+# ----------------------
+- name: Remove stack
+  import_tasks: remove_stack.yml
+  when: docker_stack.state == 'absent'
+
+# ----------------------
+# PRESENT STATE HANDLING
+# ----------------------
+# Ensure directories, networks, secrets, and templates are ready
+- name: Ensure stack directories
+  import_tasks: directories.yml
+  when: docker_stack.state == 'present'
+
+- name: Ensure networks
+  import_tasks: networks.yml
+  when: docker_stack.state == 'present'
+
+- name: Manage secrets
+  import_tasks: secrets.yml
+  when:
+    - docker_stack.secrets is defined
+    - docker_stack.secrets | length > 0
+    - docker_stack.state == 'present'
+
+- name: Render stack template
+  import_tasks: render.yml
+  when: docker_stack.state == 'present'
+
+# Deploy the stack using docker stack deploy or docker-compose
+- name: Deploy docker stack
+  import_tasks: deploy.yml
+  when: docker_stack.state == 'present'
+
+# -------------------------------------------------
+# Step 5: Wait for Swarm services to be active
+# -------------------------------------------------
+- name: Wait for Swarm services
+  ansible.builtin.command: >
+    docker stack services {{ docker_stack.name }}
+  register: stack_services
+  retries: 10
+  delay: 3
+  until: stack_services.rc == 0
+  changed_when: false
+  when:
+    - docker_stack.mode == 'swarm'
+    - docker_stack.state == 'present'
+  run_once: true
+
+# -------------------------------------------------
+# Step 6: Clean up orphaned secrets (Swarm only)
+# -------------------------------------------------
+- name: Prune orphaned secrets
+  import_tasks: prune_secrets.yml
+  when:
+    - docker_stack.secrets is defined
+    - docker_stack.secrets | length > 0
+    - docker_stack.state == 'present'
+  run_once: true
