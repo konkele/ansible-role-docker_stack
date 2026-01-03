@@ -124,16 +124,29 @@
       {%- for svc_name, svc in _normalized_services.copy().items() -%}
         {%- set vols = [] -%}
         {%- for v in svc.volumes | default([]) -%}
+          {# --- Handle $_<dir>[/subpath]:<container_path> --- #}
           {%- if v is string and v.startswith('$_') -%}
-            {%- set dir_name = v.split(':')[0][2:] -%}
-            {%- set target = v.split(':')[1] if ':' in v else dir_name -%}
-            {%- set src = docker_stack.directories[dir_name].path | default('/tmp') -%}
+            {# Split source vs target only once #}
+            {%- set parts = v.split(':', 1) -%}
+            {%- set raw_src = parts[0][2:] -%}
+            {%- set target = parts[1] -%}
+            {# Extract directory key and optional subpath #}
+            {%- set src_parts = raw_src.split('/', 1) -%}
+            {%- set dir_key = src_parts[0] -%}
+            {%- set subpath = src_parts[1] if src_parts | length > 1 else '' -%}
+            {# Resolve base directory (hard fail if missing) #}
+            {%- set base = docker_stack.directories[dir_key].path
+                  | mandatory('Missing docker_stack.directories.' ~ dir_key) -%}
+            {# Build final source path #}
+            {%- set src = base ~ ('/' ~ subpath if subpath else '') -%}
             {%- set _ = vols.append(src ~ ':' ~ target) -%}
           {%- else -%}
             {%- set _ = vols.append(v) -%}
           {%- endif -%}
         {%- endfor -%}
-        {%- set _ = result.update({svc_name: svc | combine({'volumes': vols}, recursive=True)}) -%}
+        {%- set _ = result.update({
+              svc_name: svc | combine({'volumes': vols}, recursive=True)
+            }) -%}
       {%- endfor -%}
       {{ result }}
 
