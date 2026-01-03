@@ -1,84 +1,51 @@
 # -------------------------------------------------------------------
-# Purpose:
-#   Orchestrate the full lifecycle of a docker_stack based on its desired state.
+# Main entrypoint for docker_stack role
 #
-#   Responsibilities:
-#     1. Load optional vars file
-#     2. Merge layered variables
-#     3. Validate input
-#     4. Prepare and normalize data
-#     5. Remove stack if absent
-#     6. Deploy stack if present
+# Purpose:
+#   1. Normalize input docker_stacks into a consistent list format
+#   2. Apply defaults to each stack
+#   3. Process each stack individually through stack_runner.yml
 # -------------------------------------------------------------------
 
-- name: Load docker stack variables
-  include_vars:
-    file: "{{ docker_stack_vars_file }}"
-  when: docker_stack_vars_file is defined
+# -------------------------------------------------
+# Normalize docker_stacks input
+# -------------------------------------------------
+- name: Normalize docker_stacks
+  ansible.builtin.set_fact:
+    docker_stacks_list: >-
+      {{
+        docker_stacks is mapping
+        | ternary(
+            docker_stacks | dict2items
+            | map('combine', attribute='value')
+            | map('combine', attribute={'name': item.key})
+            | list,
+            docker_stacks
+          )
+      }}
 
-- name: Merge docker stack variables
-  import_tasks: merge.yml
+# -------------------------------------------------
+# Apply docker_stack_defaults to each stack
+# -------------------------------------------------
+- name: Prepare docker stacks with defaults
+  ansible.builtin.set_fact:
+    docker_stacks_prepared: "{{ docker_stacks_prepared | default([]) + [ merged_stack ] }}"
   vars:
-    merge_var_specs:
-      - name: docker_stack
+    merged_stack: >-
+      {{
+        docker_stack_defaults
+        | combine(item, recursive=True)
+      }}
+  loop: "{{ docker_stacks_list }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed_stack') }}"
 
-- name: Validate docker_stack input
-  import_tasks: validate.yml
-
-- name: Prepare Variables
-  import_tasks: prepare.yml
-
-# ----------------------
-# ABSENT STATE
-# ----------------------
-
-- name: Remove stack
-  import_tasks: remove_stack.yml
-  when: docker_stack.state == 'absent'
-
-# ----------------------
-# PRESENT STATE
-# ----------------------
-- name: Ensure stack directories
-  import_tasks: directories.yml
-  when: docker_stack.state == 'present'
-
-- name: Ensure networks
-  import_tasks: networks.yml
-  when: docker_stack.state == 'present'
-
-- name: Manage secrets
-  import_tasks: secrets.yml
-  when:
-    - docker_stack.secrets is defined
-    - docker_stack.secrets | length > 0
-    - docker_stack.state == 'present'
-
-- name: Render stack template
-  import_tasks: render.yml
-  when: docker_stack.state == 'present'
-
-- name: Deploy docker stack
-  import_tasks: deploy.yml
-  when: docker_stack.state == 'present'
-
-- name: Wait for Swarm services
-  ansible.builtin.command: >
-    docker stack services {{ docker_stack.name }}
-  register: stack_services
-  retries: 10
-  delay: 3
-  until: stack_services.rc == 0
-  changed_when: false
-  when:
-    - docker_stack.mode == 'swarm'
-    - docker_stack.state == 'present'
-  run_once: true
-
-- name: Prune orphaned secrets
-  import_tasks: prune_secrets.yml
-  when:
-    - docker_stack.secrets is defined
-    - docker_stack.secrets | length > 0
-    - docker_stack.state == 'present'
-  run_once: true
+# -------------------------------------------------
+# Step 4: Process each docker stack individually
+# -------------------------------------------------
+- name: Process each docker stack
+  ansible.builtin.include_tasks: stack_runner.yml
+  loop: "{{ docker_stacks_prepared }}"
+  loop_control:
+    loop_var: stack_input
+    label: "{{ stack_input.name | default('unnamed_stack') }}"

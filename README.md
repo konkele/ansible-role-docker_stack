@@ -13,9 +13,10 @@ The role is especially useful when:
 * The same stack definition must work in both Compose and Swarm
 * Secrets must be rotated safely and deterministically
 * Services should restart **only** when their inputs actually change
-* Validation and normalization should prevent runtime surprises
+* Validation and normalization prevent runtime surprises
+* Multiple stacks need to be managed from a single playbook
 
-The role manages the *entire lifecycle* of a Docker stack:
+The role manages the *entire lifecycle* of one or more Docker stacks:
 
 * Variable merging (defaults → group → host → override)
 * Validation and fast failure
@@ -33,14 +34,33 @@ The role manages the *entire lifecycle* of a Docker stack:
 
 ### Single Canonical Variable: `docker_stack`
 
-All behavior is driven by a single dictionary named `docker_stack`. This structure is built through layered merging and, before any deployment occurs, is:
+All behavior is driven by a single dictionary named `docker_stack`. When multiple stacks are defined, the role normalizes them into a list, then processes each stack individually through a consistent workflow.
+
+Before deployment, each `docker_stack` is:
 
 * Fully merged
 * Strictly validated
 * Normalized into a canonical schema
 * Safe to render directly into Compose v3 syntax
 
-This approach ensures predictable behavior regardless of where values are defined.
+This ensures predictable behavior regardless of where values are defined.
+
+### Multi-Stack Support
+
+The role supports multiple stacks in a single playbook by providing `docker_stacks`, which can be defined as either a dictionary or a list of stack definitions. Each stack is processed independently.
+
+```yaml
+docker_stacks:
+  - name: stack1
+    mode: compose
+    services:
+      ...
+
+  - name: stack2
+    mode: swarm
+    services:
+      ...
+```
 
 ### Mode-Aware Behavior
 
@@ -67,6 +87,7 @@ The role adapts automatically based on the selected mode:
 * External Docker network creation
 * Orphaned secret pruning (Compose & Swarm)
 * Idempotent, safe stack removal
+* Multi-stack orchestration from a single playbook
 
 ---
 
@@ -74,17 +95,15 @@ The role adapts automatically based on the selected mode:
 
 ### Merge Order
 
-The `docker_stack` variable is constructed using a layered dictionary merge:
+Each `docker_stack` is constructed using layered merges:
 
 1. `docker_stack_defaults` (role defaults)
-2. `docker_stack_group` (group_vars)
-3. `docker_stack_host` (host_vars)
-4. `docker_stack_override` (playbook or ad-hoc overrides)
+2. `docker_stack` (group_vars/host_vars)
+3. `docker_stack_override` (playbook or ad-hoc overrides)
 
 ```text
 docker_stack = defaults
-             + group
-             + host
+             + group/host
              + override
 ```
 
@@ -94,13 +113,7 @@ docker_stack = defaults
 * Lists: `append_rp` (append, remove duplicates, preserve order)
 * Missing layers: treated as `{}`
 
-This allows safe defaults with precise overrides at any level.
-
----
-
-## Default Variables
-
-Defined in `defaults/main.yml`:
+The `merge.yml` layer consolidates all per-playbook and ad-hoc overrides, simplifying variable management and ensuring safe, precise overrides at any level.  Same merge strategy is used for `docker-stacks` if utilized.
 
 ---
 
@@ -108,10 +121,10 @@ Defined in `defaults/main.yml`:
 
 ### Execution Flow
 
-1. Load optional vars file
-2. Merge layered variables
-3. Validate input
-4. Normalize and prepare data
+1. Normalize input stacks (`docker_stacks`) into a consistent list
+2. Merge layered variables per stack
+3. Validate each stack's input
+4. Normalize and prepare data (directories, services, volumes, ports, deploy, secrets)
 5. **If `state: absent`** → remove stack
 6. **If `state: present`**:
 
@@ -165,151 +178,87 @@ Secrets are **immutable and content-addressed**.
 
 ## Directory Abstractions
 
-The role provides a **directory abstraction layer** that allows services to reference well-known stack directories symbolically, rather than hard-coding absolute paths.
+The role provides a **directory abstraction layer** that allows services to reference logical directory names (`base`, `stack`, `config`, `data`, `secrets`) instead of hard-coded paths.
 
-This keeps service definitions:
-
-* Portable between hosts
-* Independent of the underlying filesystem layout
-* Easier to refactor without touching service definitions
-
-### Available Symbols
-
-The following symbolic prefixes may be used anywhere a host path is expected (most commonly in bind mounts):
-
-| Symbol      | Expands To                            |
-| ----------- | ------------------------------------- |
-| `$_stack`   | Root directory of the stack           |
-| `$_config`  | Stack configuration directory         |
-| `$_data`    | Persistent data directory             |
-| `$_secrets` | Secrets directory (Compose mode only) |
-
-The actual paths are computed during normalization based on the directory configuration and expanded into concrete filesystem paths before rendering the Compose file.
-
-### Why This Matters
-
-Without abstractions, service definitions often end up tightly coupled to host-specific paths such as `/opt/stacks/foo/data`. Using symbolic directories allows:
-
-* Changing base paths globally without editing services
-* Reusing the same service definitions across environments
-* Avoiding accidental path drift between Compose and Swarm hosts
-
-### Example: Bind Mount Using Directory Abstractions
-
-```yaml
-services:
-  app:
-    image: ghcr.io/example/app:latest
-    volumes:
-      - $_config:/etc/app            # bind mount (read-only config)
-      - $_data:/var/lib/app          # persistent application data
-```
-
-After normalization, this would render to something equivalent to:
-
-```yaml
-volumes:
-  - /opt/stacks/my_stack/config:/etc/app
-  - /opt/stacks/my_stack/data:/var/lib/app
-```
-
-The service definition itself never needs to know where the stack actually lives on disk.
+Extra directories can also be defined per stack. All directories have configurable owner, group, and mode.
 
 ---
 
-## Example: Swarm Stack
+## Services Normalization
+
+The role normalizes all service definitions for:
+
+* Ports (splitting `published:target/proto` strings)
+* Volumes (resolving `$_<dir>` syntax to absolute paths)
+* Deploy blocks (ensuring placement constraints are always lists)
+* Secrets (validating existence and transforming to canonical references)
+
+This ensures a **consistent and predictable Compose/Swarm rendering**.
+
+---
+
+## Docker Networks
+
+External Docker networks defined in `docker_stack.networks` are automatically created if missing, with the correct driver, scope, and attachable flags.
+
+* Compose mode: `bridge`
+* Swarm mode: `overlay`
+
+---
+
+## Orphaned Secret Pruning
+
+Secrets not referenced by any service are pruned:
+
+* Compose mode: deleted from disk
+* Swarm mode: removed using Docker secret API
+
+This ensures a clean, predictable environment.
+
+---
+
+## Deployment
+
+Stacks are deployed according to their `mode`:
+
+* Compose mode: `docker compose up -d`
+* Swarm mode: `docker stack deploy`
+
+Automatic restarts happen **only** if secrets or other inputs have changed.
+
+---
+
+## Usage Example
 
 ```yaml
-docker_stack_host:
-  name: my_swarm_stack
-  mode: swarm
-  allow_prune: true
+- hosts: all
+  roles:
+    - role: docker_stack
+      vars:
+        docker_stacks:
+          - name: webapp
+            mode: compose
+            services:
+              app:
+                image: myapp:latest
+                ports:
+                  - "8080:80"
+                secrets:
+                  - source: app_secret
+            secrets:
+              app_secret:
+                value: supersecret
 
-  networks:
-    proxy:
-      external: true
-      driver: overlay
-
-  services:
-    web:
-      image: nginx:latest
-      ports:
-        - target: 80
-          published: 8080
-      labels:
-        traefik.enable: "true"
-      deploy:
-        replicas: 3
-
-  secrets:
-    db_password:
-      value: "{{ vault_db_password }}"
+          - name: db
+            mode: swarm
+            services:
+              postgres:
+                image: postgres:15
+                environment:
+                  POSTGRES_PASSWORD: mypassword
 ```
 
----
-
-## Example: Compose Stack
-
-```yaml
-docker_stack_host:
-  name: my_compose_stack
-  mode: compose
-  allow_prune: true
-
-  services:
-    web:
-      image: nginx:latest
-      ports:
-        - "8080:80"
-      volumes:
-        - $_config:/etc/nginx/conf.d:ro   # bind mount via directory abstraction
-        - $_data:/usr/share/nginx/html    # persistent content directory
-
-  secrets:
-    db_password:
-      value: "{{ vault_db_password }}"
-```
-
----
-
-## Running the Role
-
-### Deploy
-
-```bash
-ansible-playbook site.yml
-```
-
-### Remove Stack
-
-```bash
-ansible-playbook site.yml --tags remove_stack
-```
-
-When removing a stack:
-
-1. Variables are merged
-2. Input is validated
-3. The stack is stopped and removed
-4. Stack directories are deleted **only if** `allow_prune: true`
-
----
-
-## Design Philosophy
-
-This role is intentionally:
-
-* **Strict** — fail early, fail loudly
-* **Predictable** — no implicit magic
-* **Idempotent** — no timestamp-based restarts
-* **Composable** — works cleanly with Ansible inventory layering
-
-It is well-suited for:
-
-* Homelabs
-* Multi-node Swarm clusters
-* GitOps-style Ansible repositories
-* Long-lived services with rotating secrets
+This will deploy two independent stacks with their respective mode, directories, and secrets fully normalized and managed.
 
 ---
 
