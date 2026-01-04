@@ -3,7 +3,7 @@
 #   Render the docker-compose.yml file for the stack from the Jinja2 template.
 # -------------------------------------------------------------------
 
-- name: Render docker-compose.yml
+- name: "{{ _stack_prefix }} Render docker-compose.yml"
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "{{ docker_stack.directories.stack.path }}/docker-compose.yml"

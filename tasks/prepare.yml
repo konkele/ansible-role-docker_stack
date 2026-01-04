@@ -4,7 +4,7 @@
 #   templates or creating directories.
 # -------------------------------------------------------------------
 
-- name: Ensure docker_stack.state is defined
+- name: "{{ _stack_prefix }} Ensure docker_stack.state is defined"
   ansible.builtin.set_fact:
     docker_stack: >-
       {{
@@ -15,15 +15,15 @@
           )
       }}
 
-- name: Compute base and stack paths
+- name: "{{ _stack_prefix }} Compute base path"
   ansible.builtin.set_fact:
     _base_path: "{{ docker_stack.directories.base.path | default('/opt/stacks') }}"
 
-- name: Compute stack path
+- name: "{{ _stack_prefix }} Compute stack path"
   ansible.builtin.set_fact:
     _stack_path: "{{ docker_stack.directories.stack.path | default(_base_path ~ '/' ~ docker_stack.name) }}"
 
-- name: Compute core directories
+- name: "{{ _stack_prefix }} Compute core directories"
   ansible.builtin.set_fact:
     _core_dirs:
       base:
@@ -52,7 +52,7 @@
         group: "{{ docker_stack.directories.secrets.group | default(docker_stack.directories_defaults.group) | default('root') }}"
         mode: "{{ docker_stack.directories.secrets.mode | default(docker_stack.directories_defaults.mode) | default('0700') }}"
 
-- name: Compute extra directories
+- name: "{{ _stack_prefix }} Compute extra directories"
   ansible.builtin.set_fact:
     _extra_dirs: >-
       {%- set d = {} -%}
@@ -70,24 +70,16 @@
       {%- endfor -%}
       {{ d }}
 
-# -------------------------------------------------
-# Debug extra directories
-# -------------------------------------------------
-# - name: Debug extra directories before merging
-#   ansible.builtin.debug:
-#     msg:
-#       extra_dirs: "{{ _extra_dirs }}"
-
-- name: Merge core and extra directories into docker_stack
+- name: "{{ _stack_prefix }} Merge core and extra directories"
   ansible.builtin.set_fact:
     docker_stack:
       "{{ docker_stack | combine({'directories': _core_dirs | combine(_extra_dirs, recursive=True)}, recursive=True) }}"
 
-- name: Initialize normalized services
+- name: "{{ _stack_prefix }} Initialize normalized services"
   ansible.builtin.set_fact:
     _normalized_services: {}
 
-- name: Normalize service ports
+- name: "{{ _stack_prefix }} Normalize service ports"
   ansible.builtin.set_fact:
     _normalized_services: >-
       {%- set result = _normalized_services.copy() -%}
@@ -117,27 +109,22 @@
       {%- endfor -%}
       {{ result }}
 
-- name: Normalize service volumes
+- name: "{{ _stack_prefix }} Normalize service volumes"
   ansible.builtin.set_fact:
     _normalized_services: >-
       {%- set result = _normalized_services.copy() -%}
       {%- for svc_name, svc in _normalized_services.copy().items() -%}
         {%- set vols = [] -%}
         {%- for v in svc.volumes | default([]) -%}
-          {# --- Handle $_<dir>[/subpath]:<container_path> --- #}
           {%- if v is string and v.startswith('$_') -%}
-            {# Split source vs target only once #}
             {%- set parts = v.split(':', 1) -%}
             {%- set raw_src = parts[0][2:] -%}
             {%- set target = parts[1] -%}
-            {# Extract directory key and optional subpath #}
             {%- set src_parts = raw_src.split('/', 1) -%}
             {%- set dir_key = src_parts[0] -%}
             {%- set subpath = src_parts[1] if src_parts | length > 1 else '' -%}
-            {# Resolve base directory (hard fail if missing) #}
             {%- set base = docker_stack.directories[dir_key].path
                   | mandatory('Missing docker_stack.directories.' ~ dir_key) -%}
-            {# Build final source path #}
             {%- set src = base ~ ('/' ~ subpath if subpath else '') -%}
             {%- set _ = vols.append(src ~ ':' ~ target) -%}
           {%- else -%}
@@ -150,7 +137,7 @@
       {%- endfor -%}
       {{ result }}
 
-- name: Normalize service deploy
+- name: "{{ _stack_prefix }} Normalize service deploy"
   ansible.builtin.set_fact:
     _normalized_services: >-
       {%- set result = _normalized_services.copy() -%}
@@ -171,7 +158,7 @@
       {%- endfor -%}
       {{ result }}
 
-- name: Normalize service secrets
+- name: "{{ _stack_prefix }} Normalize service secrets"
   ansible.builtin.set_fact:
     _normalized_services: >-
       {%- set result = _normalized_services.copy() -%}
@@ -179,7 +166,6 @@
         {%- if svc.secrets is defined and svc.secrets | length > 0 -%}
           {%- set svc_secrets = [] -%}
           {%- for s in svc.secrets -%}
-            {# ---- Validation ---- #}
             {%- if s.source is not defined -%}
               {{ fail("Service '" ~ svc_name ~ "' secret entry missing 'source'") }}
             {%- endif -%}
@@ -189,7 +175,6 @@
             {%- if docker_stack.secrets[s.source].value | default('') == '' -%}
               {{ fail("Secret '" ~ s.source ~ "' has empty value") }}
             {%- endif -%}
-            {# ---- Normalize ---- #}
             {%- set secret_entry = {
               'source': s.source,
               'target': s.target | default(s.source)
@@ -211,24 +196,6 @@
         {%- endif -%}
       {%- endfor -%}
       {{ result }}
-
-# -----------------------------
-# Debug normalized services and exit play
-# -----------------------------
-# - name: Debug normalized services and exit
-#   block:
-#     - name: Show final normalized services
-#       ansible.builtin.debug:
-#         msg: >
-#           Service '{{ item.key }}': {{ item.value }}
-#       loop: "{{ _normalized_services | dict2items }}"
-#       loop_control:
-#         label: "{{ item.key }}"
-#       run_once: true
-
-#     - name: Exit play after inspecting normalized services
-#       ansible.builtin.fail:
-#         msg: "Exiting after debugging _normalized_services."
 
 - name: Merge normalized services into docker_stack
   ansible.builtin.set_fact:

@@ -3,20 +3,20 @@
 #   Stop and remove the docker_stack and optionally delete its stack directory.
 # -------------------------------------------------------------------
 
-- name: Remove Swarm stack
+- name: "{{ _stack_prefix }} Remove Swarm stack"
   community.docker.docker_stack:
     name: "{{ docker_stack.name }}"
     state: absent
   when: docker_stack.mode == "swarm"
   run_once: true
 
-- name: Remove Compose stack
+- name: "{{ _stack_prefix }} Remove Compose stack"
   community.docker.docker_compose_v2:
     project_src: "{{ docker_stack.directories.stack.path }}"
     state: absent
   when: docker_stack.mode == "compose"
 
-- name: Delete stack directory if allowed
+- name: "{{ _stack_prefix }} Delete stack directory if allowed"
   ansible.builtin.file:
     path: "{{ docker_stack.directories.stack.path }}"
     state: absent

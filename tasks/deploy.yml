@@ -3,13 +3,13 @@
 #   Deploy the docker_stack using the appropriate backend: Docker Compose or Docker Swarm.
 # -------------------------------------------------------------------
 
-- name: Deploy stack using Docker Compose
+- name: "{{ _stack_prefix }} Deploy stack using Docker Compose"
   community.docker.docker_compose_v2:
     project_src: "{{ docker_stack.directories.stack.path }}"
     state: present
   when: docker_stack.mode == "compose"
 
-- name: Deploy stack using Docker Swarm
+- name: "{{ _stack_prefix }} Deploy stack using Docker Swarm"
   community.docker.docker_stack:
     name: "{{ docker_stack.name }}"
     state: present

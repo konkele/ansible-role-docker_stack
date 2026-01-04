@@ -5,7 +5,7 @@
 #   - Creates missing networks with proper driver, scope, and flags
 # -------------------------------------------------------------------
 
-- name: Gather external network information
+- name: "{{ _stack_prefix }} Gather external network information"
   community.docker.docker_network_info:
     name: "{{ item.key }}"
   register: docker_network_info
@@ -23,7 +23,7 @@
   loop_control:
     label: "{{ item.key }}"
 
-- name: Create missing external networks
+- name: "{{ _stack_prefix }} Create missing external networks"
   community.docker.docker_network:
     name: "{{ item.item.key }}"
     driver: >-
