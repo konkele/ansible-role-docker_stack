@@ -15,10 +15,11 @@
 #   - Restart the stack if state=restart
 # -------------------------------------------------------------------
 
-# Initialize the docker_stack variable for this iteration
+# Initialize stack variables
 - name: Initialize docker_stack for this iteration
   ansible.builtin.set_fact:
-    docker_stack: "{{ stack_input }}"
+    docker_stack:
+      "{{ stack_item.value | combine({'name': stack_item.key}) }}"
 
 # Merge docker_stack variables from defaults, group, host, and overrides
 - name: Merge docker stack variables

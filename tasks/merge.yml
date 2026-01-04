@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------
-# Generic layered dictionary merge helper for Ansible
+# Generic Layered Dictionary Merge Helper for Ansible
 #
 # Purpose:
 #   Merge defaults, optional overrides, and canonical variable
@@ -16,25 +16,45 @@
     msg: "You must define 'merge_var_specs' as a non-empty list"
   when: merge_var_specs is not defined or merge_var_specs | length == 0
 
-- name: Merge dictionary layers for each variable
+- name: Merge layers for each variable
   ansible.builtin.set_fact:
     "{{ item.name }}_merged": >-
-      {{
-        (lookup('vars', item.name + '_defaults') | default({}))
-        | combine(
-            lookup('vars', item.name) | default({}),
-            recursive=True,
-            list_merge=item.list_merge | default('append_rp')
-          )
-        | combine(
-            lookup('vars', item.name + '_override') | default({}),
-            recursive=True,
-            list_merge=item.override_list_merge | default('replace')
-          )
-      }}
+      {%- set base = lookup('vars', item.name) | default({}) -%}
+      {%- set defaults = lookup('vars', item.name + '_defaults') | default({}) -%}
+      {%- set override = lookup('vars', item.name + '_override') | default({}) -%}
+
+      {# --- Handle dict-of-dicts or list-of-dicts --- #}
+      {%- if base is mapping -%}
+        {# Merge as single dictionary #}
+        {{
+          defaults
+          | combine(base, recursive=True, list_merge=item.list_merge | default('append_rp'))
+          | combine(override, recursive=True, list_merge=item.override_list_merge | default('replace'))
+        }}
+      {%- elif base is sequence and base | length > 0 and base[0] is mapping -%}
+        {# Merge each item in a list-of-dicts individually if they have 'name' key #}
+        {{
+          base
+          | map(
+              'combine',
+              defaults,
+              recursive=True,
+              list_merge=item.list_merge | default('append_rp')
+            )
+          | map(
+              'combine',
+              override,
+              recursive=True,
+              list_merge=item.override_list_merge | default('replace')
+            )
+          | list
+        }}
+      {%- else -%}
+        {{ base }}
+      {%- endif -%}
   loop: "{{ merge_var_specs }}"
 
 - name: Promote merged dictionaries to canonical variables
   ansible.builtin.set_fact:
-    "{{ item.name }}": "{{ lookup('vars', item.name + '_merged') }}"
+    "{{ item.name }}": "{{ (lookup('vars', item.name + '_merged') | from_yaml if lookup('vars', item.name + '_merged') is string else lookup('vars', item.name + '_merged')) }}"
   loop: "{{ merge_var_specs }}"

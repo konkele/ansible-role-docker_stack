@@ -1,3 +1,6 @@
+# -------------------------------------------------------------------
+# Default per-stack template
+# -------------------------------------------------------------------
 docker_stack_defaults:
   mode: compose   # compose | swarm
   state: present  # present | absent
@@ -23,3 +26,13 @@ docker_stack_defaults:
   label_secret_hash: docker.secrets.hash  # Label to force redploy when secrets are updated
 
   services: {}   # Service definitions
+
+# -------------------------------------------------------------------
+# Global stacks defaults
+# These are applied to each stack at the top level
+# -------------------------------------------------------------------
+docker_stacks_defaults: {}
+# Example:
+# docker_stacks_defaults:
+#   adguardhome: "{{ docker_stack_defaults | combine({'mode': 'swarm'}) }}"
+#   plex: "{{ docker_stack_defaults | combine({'mode': 'compose'}) }}"
