@@ -4,13 +4,13 @@
 #   rendering, or resource creation occurs.
 # -------------------------------------------------------------------
 
-- name: Verify docker_stack is defined
+- name: "{{ _stack_prefix }} Verify docker_stack is defined"
   ansible.builtin.fail:
     msg: docker_stack must be defined and be a dictionary
   when:
     - docker_stack is not mapping
 
-- name: Verify services exist when state=present
+- name: "{{ _stack_prefix }} Verify services exist when state=present"
   ansible.builtin.fail:
     msg: docker_stack.services must contain at least one service when state=present
   when:
@@ -18,12 +18,12 @@
     - docker_stack.services is not defined
       or docker_stack.services | length == 0
 
-- name: Verify docker_stack.mode is valid
+- name: "{{ _stack_prefix }} Verify docker_stack.mode is valid"
   ansible.builtin.fail:
     msg: "docker_stack.mode must be either 'compose' or 'swarm'"
   when: docker_stack.mode not in ['compose', 'swarm']
 
-- name: Fail if any service is missing an image
+- name: "{{ _stack_prefix }} Fail if any service is missing an image"
   ansible.builtin.fail:
     msg: >
       These services are missing an 'image': {{
@@ -36,7 +36,7 @@
   when: >
     (docker_stack.services | dict2items | selectattr('value.image', 'undefined') | list) | length > 0
 
-- name: Gather secrets missing a value
+- name: "{{ _stack_prefix }} Gather secrets missing a value"
   ansible.builtin.set_fact:
     secrets_missing_value: >-
       {{
@@ -48,12 +48,12 @@
         | list
       }}
 
-- name: Fail if any secret is missing a value
+- name: "{{ _stack_prefix }} Fail if any secret is missing a value"
   ansible.builtin.fail:
     msg: "These secrets are missing a 'value': {{ secrets_missing_value }}"
   when: secrets_missing_value | length > 0
 
-- name: Identify services with deploy blocks
+- name: "{{ _stack_prefix }} Identify services with deploy blocks"
   ansible.builtin.set_fact:
     services_with_deploy: >-
       {{
@@ -66,10 +66,10 @@
 
 # NOTE: Deploy blocks are Swarm-only; warning-only enforcement can be added if desired.
 
-- name: Fail if port 'mode' is used outside swarm
+- name: "{{ _stack_prefix }} Fail if port 'mode' is used outside swarm"
   ansible.builtin.fail:
     msg: >-
-      Port 'mode' is only valid for swarm stacks. 
+      Port 'mode' is only valid for swarm stacks.
       Services with invalid ports: {{ invalid_services | join(', ') }}
   vars:
     invalid_services: >-

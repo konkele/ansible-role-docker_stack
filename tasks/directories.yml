@@ -4,7 +4,7 @@
 #   ownership and permissions.
 # -------------------------------------------------------------------
 
-- name: Create docker_stack directories
+- name: "{{ _stack_prefix }} Create docker_stack directories"
   ansible.builtin.file:
     path: "{{ item.value.path }}"
     state: directory
