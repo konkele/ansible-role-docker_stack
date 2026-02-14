@@ -116,6 +116,7 @@
       {%- for svc_name, svc in _normalized_services.copy().items() -%}
         {%- set vols = [] -%}
         {%- for v in svc.volumes | default([]) -%}
+          {# --- Handle $_<dir>[/subpath]:<container_path> --- #}
           {%- if v is string and v.startswith('$_') -%}
             {%- set parts = v.split(':', 1) -%}
             {%- set raw_src = parts[0][2:] -%}
