@@ -19,9 +19,9 @@
 - name: Merge layers for each variable
   ansible.builtin.set_fact:
     "{{ item.name }}_merged": >-
-      {%- set base = lookup('vars', item.name) | default({}) -%}
-      {%- set defaults = lookup('vars', item.name + '_defaults') | default({}) -%}
-      {%- set override = lookup('vars', item.name + '_override') | default({}) -%}
+      {%- set base = lookup('vars', item.name, default={}) -%}
+      {%- set defaults = lookup('vars', item.name + '_defaults', default={}) -%}
+      {%- set override = lookup('vars', item.name + '_override', default={}) -%}
 
       {# --- Handle dict-of-dicts or list-of-dicts --- #}
       {%- if base is mapping -%}
