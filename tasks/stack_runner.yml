@@ -64,6 +64,10 @@
         - docker_stack.secrets is defined
         - docker_stack.secrets | length > 0
 
+    # Build normalized compose dictionary
+    - name: "{{ _stack_prefix }} Build compose dictionary"
+      import_tasks: build_compose_dict.yml
+
     # Render the docker-compose.yml from the Jinja2 template
     - name: "{{ _stack_prefix }} Render stack template"
       import_tasks: render.yml

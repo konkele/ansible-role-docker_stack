@@ -1,0 +1,62 @@
+# -------------------------------------------------------------------
+# Purpose:
+#   Construct a fully normalized docker_stack_compose_dict
+#   ready to serialize directly to docker-compose.yml
+# -------------------------------------------------------------------
+
+- name: "{{ _stack_prefix }} Reset compose dict"
+  ansible.builtin.set_fact:
+    docker_stack_compose_dict: {}
+
+- name: "{{ _stack_prefix }} Initialize compose dict"
+  ansible.builtin.set_fact:
+    docker_stack_compose_dict:
+      services: "{{ docker_stack.services }}"
+
+- name: "{{ _stack_prefix }} Add networks section"
+  ansible.builtin.set_fact:
+    docker_stack_compose_dict: >-
+      {{
+        docker_stack_compose_dict
+        | combine({'networks': docker_stack.networks}, recursive=True)
+      }}
+  when:
+    - docker_stack.networks is defined
+    - docker_stack.networks | length > 0
+
+- name: "{{ _stack_prefix }} Build compose secrets dict"
+  ansible.builtin.set_fact:
+    _compose_secrets: >-
+      {%- set result = {} -%}
+      {%- for key, val in (docker_stack.secrets | default({})).items() -%}
+        {%- if docker_stack.mode == 'swarm' -%}
+          {%- set hashed =
+              (key | regex_replace('^_+', '') | regex_replace('_+$', ''))[:55]
+              ~ '_'
+              ~ docker_stack_secret_hashes[key][:8]
+          -%}
+          {%- set _ = result.update({
+                hashed: {'external': true}
+              }) -%}
+        {%- else -%}
+          {%- set _ = result.update({
+                key: {
+                  'file': docker_stack.directories.secrets.path ~ '/' ~ key
+                }
+              }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ result }}
+  when:
+    - docker_stack.secrets is defined
+    - docker_stack.secrets | length > 0
+
+- name: "{{ _stack_prefix }} Add secrets section"
+  ansible.builtin.set_fact:
+    docker_stack_compose_dict: >-
+      {{
+        docker_stack_compose_dict
+        | combine({'secrets': _compose_secrets}, recursive=True)
+      }}
+  when:
+    - _compose_secrets is defined
