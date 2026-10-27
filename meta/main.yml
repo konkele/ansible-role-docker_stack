@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: docker_stack
+  namespace: konkele
+  author: Eric Konkel
+  description: >-
+    Manage Docker Compose and Docker Swarm stacks with support for
+    layered configuration, service normalization, external networks,
+    secrets management, and stack lifecycle operations.
+  company: homelab
+  license: MIT
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+        - resolute
+
+  galaxy_tags:
+    - docker
+    - compose
+    - swarm
+    - containers
+    - deployment
+    - secrets
+    - networking
+
+dependencies: []
